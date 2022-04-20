@@ -1,38 +1,59 @@
 pipeline {
   environment {
-    PROJECT = "gj-playground"
-    APP_NAME = "hipster-adservice"
-    CLUSTER = "test-cluster"
-    CLUSTER_ZONE = "us-central1-c"
-    IMAGE_TAG = "gcr.io/gj-playground/adservice_2"
+    PROJECT = "fis-poc-346406"
+    IMAGE_TAG = "asia.gcr.io/fis-poc-346406/ad_test"
+    SVC_ACCOUNT_KEY = credentials('jenkins-sa')
   }
   agent {
     kubernetes {
+      defaultContainer 'jnlp'
       yaml """
 apiVersion: v1
 kind: Pod
 metadata:
+  name: kaniko
 labels:
   component: ci
 spec:
+  restartPolicy: Never
   containers:
   - name: gcloud
     image: gcr.io/google.com/cloudsdktool/cloud-sdk:latest
     command:
     - cat
     tty: true
-  
- """
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.6.0-debug
+    command:
+    - cat
+    tty: true
+  """
 }
   }
   stages {
-    stage('Build and push image with Container Builder') {
+    stage('test') {
       steps {
         container('gcloud') {
-          sh "gcloud auth list"
-          sh "PYTHONUNBUFFERED=1 gcloud builds submit -t gcr.io/gj-playground/adservice_2 ."
+            sh '''
+            echo -n $SVC_ACCOUNT_KEY | base64 -d > "${HOME}/serviceaccount.json"
+            cat ${HOME}/serviceaccount.json
+            gcloud auth activate-service-account --key-file=${HOME}/serviceaccount.json
+            gcloud auth list
+            '''
         }
       }
+      
+      }
+    stage('Bake') {
+      steps {
+        container('kaniko') {
+            sh '''
+            pwd
+            /kaniko/executor --dockerfile=./Dockerfile --context=/home/jenkins/agent/workspace/adtest --destination=asia.gcr.io/fis-poc-346406/ad_test --destination=asia.gcr.io/fis-poc-346406/ad_test 
+            '''
+        }
+      }
+      
+      }
     }
-  }
-} 
+}
